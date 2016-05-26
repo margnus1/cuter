@@ -249,6 +249,7 @@ initialize_app(Options) ->
   NormalizeTypes = type_normalization(Options),
   CodeServer = cuter_codeserver:start(self(), WithPmatch, Whitelist, NormalizeTypes),
   SchedPid = cuter_scheduler_maxcover:start(SolverBackend, ?DEFAULT_DEPTH, CodeServer),
+  ok = cuter_codeserver:set_scheduler(CodeServer, SchedPid),
   #conf{ calculateCoverage = calculate_coverage(Options)
        , codeServer = CodeServer
        , dataDir = cuter_lib:get_tmp_dir(BaseDir)
