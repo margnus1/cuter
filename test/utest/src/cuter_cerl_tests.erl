@@ -18,10 +18,22 @@ just_load_test_() ->
 
 just_load({M, MDb}) ->
   TagGen = fun() -> {?BRANCH_TAG_PREFIX, 42} end,
-  R = cuter_cerl:load(M, MDb, TagGen, false),
+  R = cuter_cerl:load(M, MDb, TagGen, false, spawn(fun dummy_gen_server/0)),
   Ns = ets:lookup(MDb, name),
   [{"successful loading", ?_assertEqual({ok, M}, R)},
    {"retrieve module's name", ?_assertEqual([{name, M}], Ns)}].
+
+%% For the ugly fifith Scheduler argument to cuter_cerl:load/5
+dummy_gen_server() ->
+  receive {'$gen_call', {FromPid, FromTag}, _Msg} ->
+      FromPid ! {FromTag, ok},
+      dummy_gen_server();
+    {'$gen_cast', _Msg} ->
+      dummy_gen_server();
+    Other ->
+      io:fwrite(standard_error, "Received unknown ~p~n", [Other]),
+      dummy_gen_server()
+  end.
 
 %% Have the proper exports
 -spec load_exports_test_() -> any().
@@ -33,7 +45,7 @@ load_exports_test_() ->
   
 load_exports({M, MDb}) ->
   TagGen = fun() -> {?BRANCH_TAG_PREFIX, 42} end,
-  _ = cuter_cerl:load(M, MDb, TagGen, false),
+  _ = cuter_cerl:load(M, MDb, TagGen, false, spawn(fun dummy_gen_server/0)),
   Exp = lists:sort(M:module_info(exports)),
   MExp = lists:map(fun({F,A}) -> {M, F, A} end, Exp),
   Ns = lists:sort(ets:lookup(MDb, exported)),
@@ -52,7 +64,7 @@ tag_test_() ->
 
 generate_and_collect_tags({M, Cache}) ->
   TagGen = fun cuter_codeserver:generate_tag/0,
-  _ = cuter_cerl:load(M, Cache, TagGen, false),
+  _ = cuter_cerl:load(M, Cache, TagGen, false, spawn(fun dummy_gen_server/0)),
   FoldFn = fun(Elem, Acc) ->
       case Elem of
         {{_,_,_}, {Def, _}} ->
