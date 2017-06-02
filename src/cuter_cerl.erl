@@ -247,9 +247,8 @@ store_module_info(name, _M, AST, Cache) ->
 store_module_funs(M, AST, Cache, TagGen, Scheduler) ->
   Funs = AST#c_module.defs,
   {ok, Exps} = cuter_codeserver:lookup_in_module_cache(exported, Cache),
-  UsefulInfo = [store_fun(Exps, M, X, Cache, TagGen) || X <- Funs],
-  % TODO Possibly combine the UsefulInfo of each fun.
-  ok = cuter_scheduler_maxcover:get_useful_info(Scheduler, UsefulInfo).
+  MFAs = [store_fun(Exps, M, X, Cache, TagGen) || X <- Funs],
+  ok = cuter_scheduler_maxcover:get_useful_info(Scheduler, MFAs).
 
 %% Store the AST of a function
 -spec store_fun([atom()], cuter:mod(), {cerl:c_var(), cerl:c_fun()}, cuter_codeserver:module_cache(), tag_generator()) -> any().
@@ -261,11 +260,10 @@ store_fun(Exps, M, {Fun, Def}, Cache, TagGen) ->
 %  io:format("BEFORE~n"),
 %  io:format("~p~n", [Def]),
   AnnDef = annotate(Def, TagGen),
-  UsefulInfo = get_useful_info_from_ann(AnnDef),
 %  io:format("AFTER~n"),
 %  io:format("~p~n", [AnnDef]),
   cuter_codeserver:insert_in_module_cache(MFA, {AnnDef, Exported}, Cache),
-  UsefulInfo.
+  MFA.
 
 -type type_info() :: {'type', cerl_typedef()}
                    | {'record', cerl_recdef()}.
@@ -428,13 +426,6 @@ mark_last_clause(Clauses) when is_list(Clauses) ->
   [Last|Rvs] = lists:reverse(Clauses),
   AnnLast = cerl:add_ann([last_clause], Last),
   lists:reverse([AnnLast|Rvs]).
-
-%% ----------------------------------------------------------------------------
-%% Get useful info from the annotated AST.
-%% ----------------------------------------------------------------------------
-
-%% TODO
-get_useful_info_from_ann(_Tree) -> ok.
 
 %% ----------------------------------------------------------------------------
 %% Collect tags from AST for a specific mfa.

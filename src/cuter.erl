@@ -13,6 +13,9 @@
 -type depth() :: pos_integer().
 -type erroneous_inputs() :: [{mfa(), [input()]}].
 -type seed() :: {module(), atom(), input(), depth()}.
+-type sched_heur() :: default.
+-type sched_heur_mod() :: cuter_heur_default
+                        .
 
 -define(ONE, 1).
 -define(DEFAULT_DEPTH, 25).
@@ -22,6 +25,7 @@
   codeServer          :: pid(),
   dataDir             :: file:filename(),
   scheduler           :: pid(),
+  sched_heur = cuter_heur_default :: sched_heur_mod(),
   calculateCoverage   :: boolean(),
   sortErrors          :: boolean(),
   whitelist           :: cuter_mock:whitelist(),
@@ -45,6 +49,7 @@
 -define(SUPPRESS_UNSUPPORTED_MFAS, suppress_unsupported).
 -define(NO_TYPE_NORMALIZATION, no_type_normalization).
 -define(Z3PY, z3py).
+-define(SCHED_HEUR, scheduler_heuristic).
 
 -type default_option() :: {?POLLERS_NO, ?ONE}
                         .
@@ -62,6 +67,7 @@
                 | ?SUPPRESS_UNSUPPORTED_MFAS
                 | ?NO_TYPE_NORMALIZATION
                 | ?Z3PY
+                | {?SCHED_HEUR, sched_heur()}
                 .
 
 %% ----------------------------------------------------------------------------
@@ -246,9 +252,10 @@ initialize_app(Options) ->
   WithPmatch = with_pmatch(Options),
   SolverBackend = get_solver_backend(Options),
   Whitelist = get_whitelist(Options),
+  SchedHeur = get_sched_heur(Options),
   NormalizeTypes = type_normalization(Options),
   CodeServer = cuter_codeserver:start(self(), WithPmatch, Whitelist, NormalizeTypes),
-  SchedPid = cuter_scheduler_maxcover:start(SolverBackend, ?DEFAULT_DEPTH, CodeServer),
+  SchedPid = cuter_scheduler_maxcover:start(SolverBackend, ?DEFAULT_DEPTH, CodeServer, SchedHeur),
   ok = cuter_codeserver:set_scheduler(CodeServer, SchedPid),
   #conf{ calculateCoverage = calculate_coverage(Options)
        , codeServer = CodeServer
@@ -256,6 +263,7 @@ initialize_app(Options) ->
        , nPollers = number_of_pollers(Options)
        , nSolvers = number_of_solvers(Options)
        , scheduler = SchedPid
+       , sched_heur = SchedHeur
        , sortErrors = sort_errors(Options)
        , suppressUnsupported = suppress_unsupported_mfas(Options)
        , whitelist = Whitelist }.
@@ -285,6 +293,14 @@ number_of_pollers([_|Rest]) -> number_of_pollers(Rest).
 number_of_solvers([]) -> ?ONE;
 number_of_solvers([{?SOLVERS_NO, N}|_Rest]) -> N;
 number_of_solvers([_|Rest]) -> number_of_solvers(Rest).
+
+-spec get_sched_heur([option()]) -> sched_heur_mod().
+get_sched_heur([]) -> cuter_heur_default;
+get_sched_heur([{?SCHED_HEUR, H}|_Rest]) ->
+  case H of
+    default -> cuter_heur_default
+  end;
+get_sched_heur([_|Rest]) -> get_sched_heur(Rest).
 
 -spec with_pmatch([option()]) -> boolean().
 with_pmatch(Options) -> not lists:member(?DISABLE_PMATCH, Options).

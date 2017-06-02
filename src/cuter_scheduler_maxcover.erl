@@ -4,7 +4,7 @@
 -behaviour(gen_server).
 
 %% External API.
--export([start/3, stop/1, request_input/1, store_execution/3, set_depth/2,
+-export([start/4, stop/1, request_input/1, store_execution/3, set_depth/2,
 	 request_operation/1, solver_reply/2, add_seed_input/2, clear_erroneous_inputs/1,
 	 get_useful_info/2]).
 %% Get logs API.
@@ -75,6 +75,8 @@
   solving         :: dict:dict(pid(), operationId()),
   tagsQueue       :: cuter_minheap:minheap(),
   visitedTags     :: cuter_cerl:visited_tags(),
+  heur            :: module(),
+  heur_info       :: term(),
   solved = 0      :: non_neg_integer(),
   not_solved = 0  :: non_neg_integer()}).
 -type state() :: #st{}.
@@ -84,9 +86,9 @@
 %% ----------------------------------------------------------------------------
 
 %% Starts the Scheduler.
--spec start(file:filename(), integer(), pid()) -> pid().
-start(Python, DefaultDepth, CodeServer) ->
-  case gen_server:start_link(?MODULE, [Python, DefaultDepth, CodeServer], []) of
+-spec start(file:filename(), integer(), pid(), module()) -> pid().
+start(Python, DefaultDepth, CodeServer, Heur) ->
+  case gen_server:start_link(?MODULE, [Python, DefaultDepth, CodeServer, Heur], []) of
     {ok, Scheduler} -> Scheduler;
     {error, R} -> exit({scheduler_start, R})
   end.
@@ -157,9 +159,10 @@ get_not_solved_models(Scheduler) ->
 %% init/1
 -type init_arg() :: [file:filename() | integer() | pid(), ...].
 -spec init(init_arg()) -> {ok, state()}.
-init([Python, DefaultDepth, CodeServer]) ->
+init([Python, DefaultDepth, CodeServer, Heur]) ->
   _ = set_execution_counter(0),
-  TagsQueue = cuter_minheap:new(fun erlang:'<'/2), % TODO Change cost function.
+  HeurInfo = Heur:new(),
+  TagsQueue = cuter_minheap:new(cmp_fn(Heur, HeurInfo)),
   {ok, #st{ codeServer = CodeServer
           , infoTab = dict:new()
           , python = Python
@@ -170,7 +173,12 @@ init([Python, DefaultDepth, CodeServer]) ->
           , erroneous = []
           , inputsQueue = queue:new()
           , solving = dict:new()
+          , heur = Heur
+          , heur_info = HeurInfo
           , tagsQueue = TagsQueue}}.
+
+cmp_fn(Heur, HeurInfo) ->
+  fun(A,B) -> Heur:compare(A,B,HeurInfo) end.
 
 %% terminate/2
 -spec terminate(any(), state()) -> ok.
@@ -307,12 +315,11 @@ handle_call(get_not_solved_models, _From, State=#st{not_solved = NotSolved}) ->
 
 %% handle_cast/2
 -spec handle_cast({useful_info, any()}, state()) -> {noreply, state()}.
-%% TODO Get useful info.
-handle_cast({useful_info, _UsefulInfo}, State=#st{tagsQueue = TagsQueue}) ->
-  %% Probably generate a new cost function and rearrange the heap.
-  NewQueue = cuter_minheap:rearrange(TagsQueue, fun erlang:'<'/2),
-  {noreply, State#st{tagsQueue = NewQueue}}.
-
+handle_cast({useful_info, Changed},
+            State=#st{heur=Heur, heur_info=OldInfo, tagsQueue = TagsQueue}) ->
+  NewInfo = Heur:update_mfas(OldInfo, Changed),
+  NewQueue = cuter_minheap:rearrange(TagsQueue, cmp_fn(Heur, NewInfo)),
+  {noreply, State#st{tagsQueue = NewQueue, heur_info=NewInfo}}.
 
 %% ----------------------------------------------------------------------------
 %% Functions for tags

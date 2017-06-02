@@ -38,8 +38,8 @@ DIALYZER_FLAGS = -Wunmatched_returns
 
 WARNS = +warn_exported_vars +warn_unused_import +warn_missing_spec #+warn_untyped_record
 WARNS_FTEST = +warn_exported_vars +warn_unused_import #+warn_missing_spec +warn_untyped_record
-ERLC_INCLUDE = -I $(INCLUDE) -I $(GPB_INCLUDE)
-ERLC_FLAGS = +debug_info $(WARNS) -Werror
+ERLC_PATH = -pa $(EBIN)
+ERLC_INCLUDE = -I $(INCLUDE) -I $(GPB_INCLUDE) $(ERLC_PATH)
 ERLC_FLAGS_PROTOBUFS = +debug_info $(WARNS_FTEST) -Werror
 ERLC_FLAGS_FTEST = +debug_info $(WARNS_FTEST) -Werror
 ERLC_FLAGS_NO_DBG = $(WARNS) -Werror
@@ -48,6 +48,9 @@ ERLC_MACROS = -DEBIN=\"$(PWD)/$(EBIN)\" -DPYTHON_PATH=\"@PYTHON_PATH@\" -DPRIV=\
 HRL_FILES = \
 	cuter_macros \
 	eunit_config
+
+HEUR_MODULES = \
+	cuter_heur_default
 
 SRC_MODULES = \
 	cuter_binlib \
@@ -65,6 +68,8 @@ SRC_MODULES = \
 	cuter_erlang \
 	cuter_pp \
 	cuter_scheduler_maxcover \
+	cuter_heur \
+	$(HEUR_MODULES) \
 	cuter_analyzer \
 	cuter_solver \
 	cuter_merger \
@@ -155,6 +160,8 @@ utest_target: $(UTEST_MODULES:%=$(UTEST_EBIN)/%.beam)
 ftest_target: $(FTEST_MODULES:%=$(FTEST_EBIN)/%.beam)
 
 $(PROTOBUFS:%=$(INCLUDE)/%.hrl): $(PROTOBUFS:%=$(SRC)/%.erl)
+
+$(HEUR_MODULES:%=$(EBIN)/%.beam): $(EBIN)/cuter_heur.beam
 
 $(SRC)/%.erl: %.proto
 	@echo "PROTOC-ERL $(notdir  $<)"

@@ -29,6 +29,8 @@ def main():
   parser.add_argument("--suppress-unsupported", action='store_true', help="suppresses the reporting of unsupported MFAs")
   parser.add_argument("--no-type-normalization", action='store_true', help="disable the normalization specifications & types")
   parser.add_argument("--z3py", action='store_true', help="use the z3py solver backend")
+  parser.add_argument("--sched", metavar="S", default="default",
+                      help="Use scheduling heuristic S")
 
   # Parse the arguments
   args = parser.parse_args()
@@ -91,6 +93,8 @@ def main():
       opts.append("{{whitelist, '{}'}}".format(args.w))
   if args.z3py:
       opts.append("z3py")
+  if args.sched:
+    opts.append("{{scheduler_heuristic, {}}}".format(args.sched))
   strOpts = ",".join(opts)
 
   # Run CutEr
