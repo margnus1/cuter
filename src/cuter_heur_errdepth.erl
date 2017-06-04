@@ -38,18 +38,42 @@
          }).
 
 new(Codeserver) ->
-  #st{callers=#{}, nodedepths=array:new({default,inf}), fundepths=#{},
+  #st{callers=#{}, nodedepths=array:new(), fundepths=#{},
       codeserver=Codeserver}.
 
 update_mfas(MFAs, Old) ->
   %% TODO: Deal with updates (clear fundepths; add deps of those to wq)
   process(wq_new(MFAs), update_callers(MFAs, Old)).
-%% io:format("~p~n", [array:to_list(
 
 compare(AElem = {AVis, _, ATag, _}, BElem = {BVis, _, BTag, _}, State) ->
   ADepth = get_nodedepth(ATag, State),
   BDepth = get_nodedepth(BTag, State),
   {AVis, ADepth, AElem} < {BVis, BDepth, BElem}.
+
+-ifdef(NOTDEF).
+pp(MFA, State) ->
+  {AST0, _Exported} = get_code(MFA, State),
+  AST1 = cerl:add_ann([{depth, get_fundepth(MFA, State)}], pp_ann(AST0, State)),
+  io:format("~s~n", [cerl_prettypr:format(AST1)]).
+
+pp_annss(Nodess, St) -> [[pp_ann(Node, St) || Node <- Nodes] || Nodes <- Nodess].
+pp_ann(Node, St) ->
+  Ann = pp_ann_filter(cerl:get_ann(Node), St),
+  case cerl:subtrees(Node) of
+    [] -> cerl:set_ann(Node, Ann); % Sic on arg order (cerl lib idiosyncrasy)
+    Subtrees ->
+      cerl:ann_make_tree(Ann, cerl:type(Node), pp_annss(Subtrees, St))
+  end.
+
+pp_ann_filter([A={?BRANCH_TAG_PREFIX, This}|Anns], St) ->
+  [A, {depth, get_nodedepth(This, St)}|pp_ann_filter(Anns, St)];
+pp_ann_filter([A={next_tag,{?BRANCH_TAG_PREFIX, Next}}|Anns], St) ->
+  [A, {next_depth, get_nodedepth(Next, St)}|pp_ann_filter(Anns, St)];
+pp_ann_filter([{file,_}|Anns], St) -> pp_ann_filter(Anns, St);
+pp_ann_filter([Line|Anns], St) when is_integer(Line) -> pp_ann_filter(Anns, St);
+pp_ann_filter([Other|Anns], St) -> [Other|pp_ann_filter(Anns, St)];
+pp_ann_filter([], _St) -> [].
+-endif.
 
 update_callers(MFAs, State0) ->
   lists:foldl(fun(MFA, State1=#st{callers = CM0}) ->
@@ -67,11 +91,10 @@ add_callers([Callee|Callees], Caller, Callers0) ->
   add_callers(Callees, Caller, Callers).
 
 %% TODO: Deal with mocking name resolution
+%% TODO: Filter out letrec-defined functions
 get_callees(MFA={M,_,_}, State) ->
-  io:fwrite("~p", [MFA]),
   {AST, _Exported} = get_code(MFA, State),
   Callees = callees(AST, ordsets:new()),
-  io:fwrite(" callees: ~p~n", [Callees]),
   %% Module-qualify local calls
   ordsets:from_list(lists:map(fun({F,A}) -> {M,F,A}; (O) -> O end, Callees)).
 
@@ -88,7 +111,6 @@ process(WQ0, State0) ->
   case wq_out(WQ0) of
     empty -> State0;
     {MFA, WQ1} ->
-      io:fwrite("~p", [MFA]),
       {AST, _Exported} = get_code(MFA, State0),
       %% case MFA of {vs,len,_} ->
       %%     io:fwrite("~s~n", [cerl_prettypr:format(AST)])
@@ -97,7 +119,6 @@ process(WQ0, State0) ->
       %% TODO: Are there recursive letrecs? In that case, we need to
       %% fixpoint-loop.
       #vs{depth=Depth, state=State1} = visit_node(cerl:fun_body(AST), VS),
-      io:fwrite(" depth: ~w~n", [Depth]),
       case update_fundepth(MFA, Depth, State1) of
         unchanged -> process(WQ1, State1);
         {changed, State = #st{callers=Callers}} ->
@@ -184,17 +205,20 @@ visit_clause(Node, VS0 = #vs{depth=ExitDepth, badmatch_depth=BadmatchDepth, stat
   VS1 = #vs{depth=Depth1, state=State2} =
     visit_node(cerl:clause_body(Node), VS0#vs{state=State1}),
   State3 = update_nodedepth(This, Depth1, State2),
-  %% +1 for the guard
-  VS2 = visit_node(cerl:clause_guard(Node),
-                   VS1#vs{depth=ed_add(Depth1,1), state=State3}),
+  Depth2 = case can_guard_fail(cerl:clause_guard(Node)) of
+             false -> Depth1;
+             true -> ed_add(min(Depth1,BadmatchDepth),1)
+           end,
+  VS2 = visit_node(cerl:clause_guard(Node), VS1#vs{depth=Depth2, state=State3}),
   VS = #vs{depth=Depth, badmatch_depth=BadmatchDepth} =
     visit_pats(cerl:clause_pats(Node), VS2#vs{badmatch_depth=BadmatchDepth}),
-  %% +1 for the first pattern (fastest way to next clause)
+  %% %% +1 for the first pattern (fastest way to next clause)
   VS#vs{depth=ExitDepth,
-        badmatch_depth=min(ed_add(BadmatchDepth,1), Depth)}.
+        badmatch_depth=%% min(ed_add(BadmatchDepth,1), Depth)
+          Depth}.
 
 can_guard_fail(Node) ->
-  not cerl:is_literal(Node) orelse cerl:abstract(Node) =/= 'true'.
+  not cerl:is_literal(Node) orelse cerl:concrete(Node) =/= 'true'.
 
 visit_patss(Patss, VS) ->
   lists:foldr(fun visit_pats/2, VS, Patss).
@@ -274,7 +298,10 @@ update_fundepth(MFA, NewDepth, State = #st{fundepths=FDepths}) ->
   end.
 
 get_nodedepth(Tag, #st{nodedepths=NDs}) ->
-  array:get(Tag, NDs).
+  case array:get(Tag, NDs) of
+    undefined -> error(badarg, [Tag]);
+    Depth -> Depth
+  end.
 
 update_nodedepth(Tag, Depth, State=#st{nodedepths=NDs}) ->
   State#st{nodedepths=array:set(Tag, Depth, NDs)}.
