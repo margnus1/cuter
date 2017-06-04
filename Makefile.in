@@ -50,6 +50,7 @@ HRL_FILES = \
 	eunit_config
 
 HEUR_MODULES = \
+	cuter_heur_errdepth \
 	cuter_heur_default
 
 SRC_MODULES = \

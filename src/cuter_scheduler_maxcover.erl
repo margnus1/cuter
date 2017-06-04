@@ -161,7 +161,7 @@ get_not_solved_models(Scheduler) ->
 -spec init(init_arg()) -> {ok, state()}.
 init([Python, DefaultDepth, CodeServer, Heur]) ->
   _ = set_execution_counter(0),
-  HeurInfo = Heur:new(),
+  HeurInfo = Heur:new(CodeServer),
   TagsQueue = cuter_minheap:new(cmp_fn(Heur, HeurInfo)),
   {ok, #st{ codeServer = CodeServer
           , infoTab = dict:new()
@@ -317,7 +317,7 @@ handle_call(get_not_solved_models, _From, State=#st{not_solved = NotSolved}) ->
 -spec handle_cast({useful_info, any()}, state()) -> {noreply, state()}.
 handle_cast({useful_info, Changed},
             State=#st{heur=Heur, heur_info=OldInfo, tagsQueue = TagsQueue}) ->
-  NewInfo = Heur:update_mfas(OldInfo, Changed),
+  NewInfo = Heur:update_mfas(Changed, OldInfo),
   NewQueue = cuter_minheap:rearrange(TagsQueue, cmp_fn(Heur, NewInfo)),
   {noreply, State#st{tagsQueue = NewQueue, heur_info=NewInfo}}.
 

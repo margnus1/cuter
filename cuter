@@ -30,7 +30,7 @@ def main():
   parser.add_argument("--no-type-normalization", action='store_true', help="disable the normalization specifications & types")
   parser.add_argument("--z3py", action='store_true', help="use the z3py solver backend")
   parser.add_argument("--sched", metavar="S", default="default",
-                      help="Use scheduling heuristic S")
+                      help="Use scheduling heuristic S (default or errdepth)")
 
   # Parse the arguments
   args = parser.parse_args()

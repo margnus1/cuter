@@ -13,8 +13,9 @@
 -type depth() :: pos_integer().
 -type erroneous_inputs() :: [{mfa(), [input()]}].
 -type seed() :: {module(), atom(), input(), depth()}.
--type sched_heur() :: default.
+-type sched_heur() :: default | errdepth.
 -type sched_heur_mod() :: cuter_heur_default
+                        | cuter_heur_errdepth
                         .
 
 -define(ONE, 1).
@@ -298,6 +299,7 @@ number_of_solvers([_|Rest]) -> number_of_solvers(Rest).
 get_sched_heur([]) -> cuter_heur_default;
 get_sched_heur([{?SCHED_HEUR, H}|_Rest]) ->
   case H of
+    errdepth -> cuter_heur_errdepth;
     default -> cuter_heur_default
   end;
 get_sched_heur([_|Rest]) -> get_sched_heur(Rest).
