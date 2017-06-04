@@ -99,7 +99,7 @@ pop(H) ->
 rearrange(H, Fn) ->
   H1 = H#heap{lt = Fn},
   case ets:lookup(H1#heap.htab, 1) of
-    [] -> H;
+    [] -> H1;
     [{1, _Head}] ->
       HS = heap_size(H1),
       combine(H1, 1, HS),
