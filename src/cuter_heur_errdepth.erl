@@ -251,7 +251,10 @@ resolve_call(Node) ->
         bs_context_to_binary -> no
       end;
     apply ->
-      {yes, {_,_} = cerl:var_name(cerl:apply_op(Node))};
+      case cerl:var_name(cerl:apply_op(Node)) of
+        FA = {_,_} -> {yes, FA};
+        Var when is_atom(Var) -> no
+      end;
     call ->
       case {resolve_atom(cerl:call_module(Node)),
             resolve_atom(cerl:call_name(Node))}
